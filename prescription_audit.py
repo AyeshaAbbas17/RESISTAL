@@ -21,7 +21,7 @@ TEXT = {
     "English": {
         "title": "Prescription Audit",
         "intro": "Upload a prescription image for text extraction and completeness review by healthcare staff.",
-        "disclaimer": "RxAudit supports professional review; it does not replace clinical judgment, verify the prescription, assess treatment appropriateness, or recommend treatment.",
+        "disclaimer": "Resistal supports professional review; it does not replace clinical judgment, verify the prescription, assess treatment appropriateness, or recommend treatment.",
         "upload": "Upload prescription image (PNG, JPG, JPEG)",
         "upload_hint": "Only upload a prescription you are authorized to review. Images remain in this Streamlit session.",
         "extract": "Extract prescription details",
@@ -64,7 +64,7 @@ TEXT = {
     "اردو": {
         "title": "نسخے کا جائزہ",
         "intro": "صحت کے عملے کے جائزے کے لیے نسخے کی تصویر اپ لوڈ کریں تاکہ تحریر نکالی اور معلومات کی موجودگی دیکھی جا سکے۔",
-        "disclaimer": "RxAudit پیشہ ورانہ جائزے میں مدد دیتا ہے؛ یہ طبی فیصلے کا متبادل نہیں، نسخے کی تصدیق یا علاج کی موزونیت کا فیصلہ نہیں کرتا اور علاج تجویز نہیں کرتا۔",
+        "disclaimer": "Resistal پیشہ ورانہ جائزے میں مدد دیتا ہے؛ یہ طبی فیصلے کا متبادل نہیں، نسخے کی تصدیق یا علاج کی موزونیت کا فیصلہ نہیں کرتا اور علاج تجویز نہیں کرتا۔",
         "upload": "نسخے کی تصویر اپ لوڈ کریں (PNG، JPG، JPEG)",
         "upload_hint": "صرف وہ نسخہ اپ لوڈ کریں جس کا جائزہ لینے کی آپ کو اجازت ہو۔ تصویر اسی Streamlit سیشن میں رہے گی۔",
         "extract": "نسخے کی معلومات نکالیں",
@@ -176,12 +176,17 @@ def _show_audit(labels: dict[str, str], findings: list[dict[str, str]]) -> None:
         "no_flag_identified": labels["no_flag_identified"],
     }
     for finding in findings:
-        st.markdown(f"**{status_labels[finding['status']]}**")
+        if finding["status"] == "no_flag_identified":
+            st.success(status_labels[finding["status"]])
+        elif finding["status"] == "missing_information":
+            st.warning(status_labels[finding["status"]])
+        else:
+            st.info(status_labels[finding["status"]])
         if finding["field"]:
             field_label = labels["field_" + finding["field"]]
             reason = labels[finding["reason_key"]].format(field=field_label)
             st.write(f"{labels['why']}: {reason}")
-        else:
+        elif finding["status"] == "no_flag_identified":
             st.write(labels[finding["reason_key"]])
     st.caption(labels["audit_scope"])
 
@@ -189,7 +194,6 @@ def _show_audit(labels: dict[str, str], findings: list[dict[str, str]]) -> None:
 def render_prescription_audit(language: str) -> None:
     """Render image upload, AI extraction, staff confirmation, then completeness audit."""
     labels = TEXT[language]
-    st.markdown(f"### {labels['title']}")
     st.write(labels["intro"])
     st.info(labels["disclaimer"])
     uploaded = st.file_uploader(
@@ -241,34 +245,37 @@ def render_prescription_audit(language: str) -> None:
 
     for record in records:
         with st.container(border=True):
-            st.markdown(f"#### {labels['uploaded']}: {record['uploaded_prescription']['filename']}")
-            st.image(
-                record["uploaded_prescription"]["image_bytes"],
-                use_container_width=True,
-            )
-            if record["extraction_status"] != "ready":
-                st.warning(_error_label(labels, record.get("extraction_error")))
-                if st.button(labels["retry"], key=f"retry_prescription_{record['record_id']}"):
-                    with st.spinner(labels["extracting"]):
-                        _run_extraction(record)
-                    st.rerun()
-                continue
-
-            extracted = record["ai_extracted_details"]
-            st.markdown(f"#### {labels['extracted']}")
-            st.caption(labels["extracted_note"])
-            _display_details(labels, extracted)
+            preview, extracted_panel = st.columns([.85, 1.4], gap="large")
+            with preview:
+                st.markdown(f"#### {labels['uploaded']}")
+                st.caption(record["uploaded_prescription"]["filename"])
+                st.image(record["uploaded_prescription"]["image_bytes"], use_container_width=True)
+            with extracted_panel:
+                if record["extraction_status"] == "ready":
+                    extracted = record["ai_extracted_details"]
+                    st.markdown(f"#### {labels['extracted']}")
+                    st.caption(labels["extracted_note"])
+                    _display_details(labels, extracted)
+                else:
+                    st.warning(_error_label(labels, record.get("extraction_error")))
+                    if st.button(labels["retry"], key=f"retry_prescription_{record['record_id']}"):
+                        with st.spinner(labels["extracting"]):
+                            _run_extraction(record)
+                        st.rerun()
+                    continue
 
             st.markdown(f"#### {labels['confirm_title']}")
             starting_details = record.get("doctor_confirmed_details") or extracted
             edited: dict[str, str] = {}
-            for field in FIELDS:
-                widget = st.text_area if field == "other_relevant_details" else st.text_input
-                edited[field] = widget(
-                    labels["field_" + field],
-                    value=starting_details.get(field, "Not specified"),
-                    key=f"prescription_{record['record_id']}_{field}",
-                )
+            field_columns = st.columns(2, gap="large")
+            for index, field in enumerate(FIELDS):
+                with field_columns[index % 2]:
+                    widget = st.text_area if field == "other_relevant_details" else st.text_input
+                    edited[field] = widget(
+                        labels["field_" + field],
+                        value=starting_details.get(field, "Not specified"),
+                        key=f"prescription_{record['record_id']}_{field}",
+                    )
             if st.button(
                 labels["confirm_button"],
                 key=f"confirm_prescription_{record['record_id']}",

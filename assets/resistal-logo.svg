@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 330 96" role="img" aria-labelledby="title">
+  <title id="title">Resistal</title>
+  <path d="M25 74V22h25c18 0 21 26 2 29H25" fill="none" stroke="#163A5F" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="m46 51 25 23" fill="none" stroke="#2864A5" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="25" cy="22" r="6" fill="#2864A5"/>
+  <text x="96" y="64" fill="#163A5F" font-family="Inter,Manrope,system-ui,sans-serif" font-size="48" font-weight="700" letter-spacing="-1.8">Resistal</text>
+</svg>

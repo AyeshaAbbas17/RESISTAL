@@ -83,6 +83,51 @@ TEXT = {
     },
 }
 
+OVERVIEW_TEXT = {
+    "English": {
+        "intro": "A session-level view of patient-reported history and prescription review activity.",
+        "history_total": "History submissions",
+        "audit_total": "Prescription audits",
+        "missing": "Records with missing details",
+        "review": "Records needing review",
+        "review_title": "Review overview",
+        "missing_label": "Missing information flags",
+        "review_label": "Details marked for review",
+        "quick_actions": "Continue your work",
+        "recent_activity": "Recent activity",
+        "patient_activity": "Patient-reported history · unverified",
+        "audit_pending": "Prescription extraction · awaiting professional confirmation",
+        "audit_confirmed": "Prescription review · professional confirmation recorded",
+        "audit_attention": "Prescription extraction · needs attention",
+        "open_history": "Open patient history",
+        "open_audit": "Review a prescription",
+        "open_guidance": "Prepare patient guidance",
+        "scope": "Counts are limited to this browser session. Flags identify missing or unclear prescription details; they do not assess clinical appropriateness or diagnose misuse.",
+        "empty": "No activity yet. Start by recording patient-reported antibiotic history or reviewing a prescription.",
+    },
+    "اردو": {
+        "intro": "مریض کی بتائی ہوئی سابقہ معلومات اور نسخے کے جائزے کی اس سیشن تک محدود جھلک۔",
+        "history_total": "سابقہ معلومات کے اندراج",
+        "audit_total": "نسخوں کے جائزے",
+        "missing": "غائب تفصیلات والے ریکارڈز",
+        "review": "جائزے کے منتظر ریکارڈز",
+        "review_title": "جائزے کا خلاصہ",
+        "missing_label": "غائب معلومات کی نشان دہی",
+        "review_label": "جائزے کے لیے نشان زد تفصیلات",
+        "quick_actions": "اپنا کام جاری رکھیں",
+        "recent_activity": "حالیہ سرگرمی",
+        "patient_activity": "مریض کی بتائی ہوئی سابقہ معلومات · غیر تصدیق شدہ",
+        "audit_pending": "نسخے کی معلومات · پیشہ ورانہ تصدیق کی منتظر",
+        "audit_confirmed": "نسخے کا جائزہ · پیشہ ورانہ تصدیق درج ہے",
+        "audit_attention": "نسخے کی معلومات · توجہ درکار ہے",
+        "open_history": "مریض کی سابقہ معلومات کھولیں",
+        "open_audit": "نسخے کا جائزہ لیں",
+        "open_guidance": "مریض کے لیے رہنمائی بنائیں",
+        "scope": "یہ تعداد صرف موجودہ براؤزر سیشن تک محدود ہے۔ نشان دہی غائب یا غیر واضح تفصیلات کی ہے؛ یہ علاج کی موزونیت یا غلط استعمال کی تشخیص نہیں۔",
+        "empty": "ابھی کوئی سرگرمی نہیں۔ مریض کی بتائی ہوئی معلومات درج کرنے یا نسخے کا جائزہ لینے سے آغاز کریں۔",
+    },
+}
+
 _NONPRESCRIBED_SOURCES = {
     "bought without a prescription",
     "بغیر نسخے کے خریدی",
@@ -299,7 +344,6 @@ def render_analytics(language: str) -> None:
     )
     metrics = aggregate_metrics(patient_records, prescription_records)
 
-    st.markdown(f"### {labels['title']}")
     st.info(labels["scope"])
     if not patient_records and not prescription_records:
         st.info(labels["no_records"])
@@ -344,3 +388,72 @@ def render_analytics(language: str) -> None:
     st.caption(labels["trend_note"])
     _render_history_chart(labels, monthly_history_counts(patient_records))
     _render_audit_chart(labels, monthly_audit_counts(prescription_records))
+
+
+def render_overview(language: str) -> None:
+    """Render a concise session-level overview without exposing individual records."""
+    labels = OVERVIEW_TEXT[language]
+    patient_records = unique_records(get_patient_history_records(st.session_state))
+    prescription_records = unique_records(
+        get_prescription_audit_records(st.session_state)
+    )
+    metrics = aggregate_metrics(patient_records, prescription_records)
+
+    st.write(labels["intro"])
+    columns = st.columns(4)
+    cards = (
+        ("history_total", "history_submissions"),
+        ("audit_total", "prescription_audit_records"),
+        ("missing", "records_with_missing_information"),
+        ("review", "records_requiring_review"),
+    )
+    for column, (label, metric) in zip(columns, cards):
+        with column:
+            st.metric(labels[label], metrics[metric])
+
+    st.markdown(f"### {labels['review_title']}")
+    first, second = st.columns(2)
+    with first:
+        st.metric(labels["missing_label"], metrics["missing_information_flags"])
+    with second:
+        st.metric(labels["review_label"], metrics["details_requiring_review"])
+
+    st.markdown(f"### {labels['recent_activity']}")
+    activity: list[tuple[str, str, str]] = []
+    for record in patient_records:
+        submitted_at = record.get("submitted_at")
+        if isinstance(submitted_at, str):
+            activity.append((submitted_at, labels["patient_activity"], submitted_at))
+    for record in prescription_records:
+        submitted_at = record.get("submitted_at")
+        if not isinstance(submitted_at, str):
+            continue
+        if isinstance(record.get("doctor_confirmed_details"), Mapping):
+            status = labels["audit_confirmed"]
+        elif record.get("extraction_status") == "ready":
+            status = labels["audit_pending"]
+        else:
+            status = labels["audit_attention"]
+        activity.append((submitted_at, status, submitted_at))
+    if activity:
+        for _, description, timestamp in sorted(activity, reverse=True)[:5]:
+            with st.container(border=True):
+                st.write(description)
+                display_time = timestamp.replace("T", " ").replace("+00:00", " UTC")
+                st.caption(display_time)
+    else:
+        st.info(labels["empty"])
+
+    st.markdown(f"### {labels['quick_actions']}")
+    actions = (
+        ("open_history", "patient_history"),
+        ("open_audit", "prescription_audit"),
+        ("open_guidance", "patient_guidance"),
+    )
+    for column, (label, page) in zip(st.columns(3), actions):
+        with column:
+            if st.button(labels[label], key=f"overview_{page}", use_container_width=True):
+                st.session_state.navigation_page = page
+                st.rerun()
+
+    st.info(labels["scope"])

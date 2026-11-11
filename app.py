@@ -1,9 +1,9 @@
-"""Streamlit shell for RxAudit's bilingual prototype."""
+"""Streamlit shell for Resistal's bilingual prototype."""
 
 import streamlit as st
 from dotenv import load_dotenv
 
-from analytics import render_analytics
+from analytics import render_analytics, render_overview
 from gemini_service import GeminiServiceError, test_gemini_connection
 from patient_history import render_patient_history
 from patient_guidance import render_patient_guidance
@@ -14,12 +14,10 @@ load_dotenv()
 TEXT = {
     "English": {
         "language": "Language / زبان", "navigation": "Navigation",
+        "overview": "Overview",
         "patient_history": "Patient History", "prescription_audit": "Prescription Audit",
         "patient_guidance": "Patient Guidance", "analytics": "Analytics",
-        "title": "RxAudit", "subtitle": "AI-Powered Antibiotic Stewardship",
-        "description": "A support platform for responsible antibiotic use. RxAudit helps organize information for healthcare professionals to review. It does not diagnose, prescribe, or make treatment decisions.",
-        "about_title": "Welcome to RxAudit",
-        "about_body": "This prototype brings patient history, prescription review, patient guidance, and institutional insights together. AI output is intended for professional review and never replaces clinical judgment.",
+        "connection_scope": "Configuration check only. No patient information is sent.",
         "connection_title": "Gemini connection",
         "connection_description": "Send a harmless test prompt to check your Gemini API setup. No patient information is sent.",
         "test_button": "Test Gemini Connection", "testing": "Contacting Gemini…",
@@ -77,12 +75,10 @@ TEXT = {
     },
     "اردو": {
         "language": "زبان / Language", "navigation": "صفحہ منتخب کریں",
+        "overview": "جائزہ",
         "patient_history": "مریض کی سابقہ معلومات", "prescription_audit": "نسخے کا جائزہ",
         "patient_guidance": "مریض کے لیے رہنمائی", "analytics": "اعداد و شمار",
-        "title": "RxAudit", "subtitle": "اینٹی بایوٹک کے ذمہ دارانہ استعمال کے لیے اے آئی پلیٹ فارم",
-        "description": "ذمہ دارانہ اینٹی بایوٹک استعمال میں معاون ایک پلیٹ فارم۔ RxAudit صحت کے ماہرین کے جائزے کے لیے معلومات کو منظم کرتا ہے۔ یہ تشخیص یا دوا تجویز نہیں کرتا اور علاج کا فیصلہ نہیں کرتا۔",
-        "about_title": "RxAudit میں خوش آمدید",
-        "about_body": "یہ ابتدائی نمونہ مریض کی سابقہ معلومات، نسخے کے جائزے، مریض کی رہنمائی اور ادارہ جاتی معلومات کو ایک جگہ جمع کرتا ہے۔ اے آئی کی تیار کردہ معلومات ماہر کے جائزے کے لیے ہیں اور طبی فیصلے کا متبادل نہیں۔",
+        "connection_scope": "صرف ترتیب کی جانچ۔ مریض کی کوئی معلومات نہیں بھیجی جائیں گی۔",
         "connection_title": "Gemini کنکشن",
         "connection_description": "Gemini API کی ترتیب جانچنے کے لیے ایک سادہ ٹیسٹ بھیجیں۔ مریض کی کوئی معلومات نہیں بھیجی جائیں گی۔",
         "test_button": "Gemini کنکشن چیک کریں", "testing": "Gemini سے رابطہ کیا جا رہا ہے…",
@@ -140,7 +136,14 @@ TEXT = {
     },
 }
 
-PAGES = ("patient_history", "prescription_audit", "patient_guidance", "analytics")
+PAGES = ("overview", "patient_history", "prescription_audit", "patient_guidance", "analytics")
+NAV_ICONS = {
+    "overview": ":material/dashboard:",
+    "patient_history": ":material/history:",
+    "prescription_audit": ":material/fact_check:",
+    "patient_guidance": ":material/menu_book:",
+    "analytics": ":material/analytics:",
+}
 
 
 def apply_language_styles(language: str) -> None:
@@ -149,40 +152,96 @@ def apply_language_styles(language: str) -> None:
     alignment = "right" if language == "اردو" else "left"
     st.markdown(
         f"""<style>
-        .stApp, [data-testid="stSidebar"] {{ direction: {direction}; text-align: {alignment}; }}
-        .stApp p, .stApp h1, .stApp h2, .stApp h3,
-        [data-testid="stSidebar"] label, [data-testid="stSidebar"] p {{ text-align: {alignment}; }}
+        :root {{ --navy:#163A5F; --royal:#2864A5; --soft-blue:#E8F0F7; --ivory:#FAF8F1; --paper:#FFFFFF; --charcoal:#283442; --slate:#5C6B7D; --line:#DDE3E8; --success:#32836A; --warning:#D69A3A; --critical:#C65B5B; }}
+        html, body, .stApp {{ font-family:Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }}
+        [data-testid="stIconMaterial"] {{ font-family:"Material Symbols Rounded" !important; font-weight:normal; font-style:normal; letter-spacing:normal; text-transform:none; direction:ltr; -webkit-font-feature-settings:"liga"; -webkit-font-smoothing:antialiased; }}
+        .stApp {{ direction:{direction}; text-align:{alignment}; background:var(--ivory); color:var(--charcoal); }}
+        .stApp [data-testid="stAppViewContainer"] > .main {{ background:var(--ivory); }}
+        .stApp [data-testid="stMainBlockContainer"] {{ max-width:1280px; padding:2.5rem clamp(1.25rem, 4vw, 3.5rem) 4rem; }}
+        .stApp p, .stApp h1, .stApp h2, .stApp h3 {{ text-align:{alignment}; }}
+        .stApp p {{ color:var(--charcoal); line-height:1.65; }}
+        h1,h2,h3,h4 {{ color:var(--navy); letter-spacing:-.025em; }}
+        h1 {{ font-size:2.15rem !important; font-weight:720 !important; margin-bottom:.45rem !important; }}
+        h2 {{ font-size:1.5rem !important; font-weight:680 !important; }}
+        h3 {{ font-size:1.22rem !important; font-weight:680 !important; }}
+        [data-testid="stSidebar"] {{ background:var(--paper); border-right:1px solid var(--line); }}
+        [data-testid="stSidebar"] > div:first-child {{ padding-top:1.2rem; }}
+        [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p {{ color:var(--slate); }}
+        [data-testid="stSidebar"] [data-testid="stBaseButton-secondary"], [data-testid="stSidebar"] [data-testid="stBaseButton-primary"] {{ width:100%; justify-content:flex-start; text-align:left; padding:.62rem .75rem; border-radius:9px; }}
+        [data-testid="stSidebar"] [data-testid="stBaseButton-secondary"] {{ border-color:transparent; background:transparent; color:var(--charcoal); }}
+        [data-testid="stSidebar"] [data-testid="stBaseButton-secondary"]:hover {{ border-color:transparent; background:var(--soft-blue); color:var(--navy); }}
+        [data-testid="stSidebar"] [data-testid="stBaseButton-primary"] {{ background:var(--soft-blue); color:var(--navy); border-color:transparent; box-shadow:inset 3px 0 0 var(--royal); }}
+        [data-testid="stSidebar"] [data-testid="stBaseButton-primary"]:hover {{ background:#DDEAF5; border-color:transparent; color:var(--navy); }}
+        [data-testid="stBaseButton-primary"] {{ background:var(--royal); border:1px solid var(--royal); border-radius:9px; padding:.56rem 1.15rem; font-weight:650; transition:background .16s ease,transform .16s ease; }}
+        [data-testid="stBaseButton-primary"]:hover {{ background:var(--navy); border-color:var(--navy); transform:translateY(-1px); }}
+        [data-testid="stBaseButton-secondary"] {{ border:1px solid #B9C7D5; border-radius:9px; color:var(--navy); background:var(--paper); }}
+        [data-testid="stBaseButton-secondary"]:hover {{ border-color:var(--royal); color:var(--royal); }}
+        .stTextInput input, .stTextArea textarea, [data-baseweb="select"] > div {{ background:var(--paper); border-color:#CBD5DF; border-radius:9px; color:var(--charcoal); }}
+        .stTextInput input:focus, .stTextArea textarea:focus {{ border-color:var(--royal); box-shadow:0 0 0 2px #2864A526; }}
+        [data-testid="stWidgetLabel"] p, [data-testid="stWidgetLabel"] {{ color:var(--navy); font-weight:600; }}
+        [data-testid="stMetric"] {{ background:var(--paper); border:1px solid var(--line); border-radius:13px; padding:1rem 1.1rem; box-shadow:0 2px 8px #163A5F08; }}
+        [data-testid="stMetricLabel"] {{ color:var(--slate); }}
+        [data-testid="stMetricValue"] {{ color:var(--navy); font-weight:720; }}
+        [data-testid="stAlert"] {{ border-radius:11px; border-width:1px; }}
+        [data-testid="stExpander"] {{ border:1px solid var(--line); border-radius:12px; background:var(--paper); }}
+        [data-testid="stVerticalBlockBorderWrapper"] > div {{ border-color:var(--line); border-radius:14px; background:var(--paper); }}
+        [data-testid="stFileUploaderDropzone"] {{ background:var(--soft-blue); border:1px dashed #A9BCD0; border-radius:12px; }}
+        [data-testid="stDataFrame"], [data-testid="stTable"] {{ border:1px solid var(--line); border-radius:10px; overflow:hidden; }}
+        [data-testid="stCaptionContainer"] p, .stCaption {{ color:var(--slate); }}
+        [data-testid="stMarkdownContainer"] a {{ color:var(--royal); }}
+        [data-testid="stMarkdownContainer"] hr {{ border-color:var(--line); }}
+        [data-testid="stSpinner"] {{ color:var(--royal); }}
+        *:focus-visible {{ outline-color:var(--royal) !important; }}
+        .resistal-brand {{ display:flex; align-items:center; gap:.7rem; padding:.2rem .25rem .8rem; }}
+        .resistal-brand-name {{ color:var(--navy); font-size:1.3rem; font-weight:730; letter-spacing:-.04em; }}
+        .resistal-brand-tag {{ color:var(--slate); font-size:.61rem; font-weight:650; letter-spacing:.09em; margin-top:.06rem; }}
+        .resistal-callout {{ background:var(--soft-blue); border-left:3px solid var(--royal); border-radius:0 10px 10px 0; padding:.85rem 1rem; }}
+        @media(max-width:1000px) {{ .stApp [data-testid="stHorizontalBlock"]:has(>[data-testid="stColumn"]:nth-child(4)) {{ flex-wrap:wrap; }} .stApp [data-testid="stHorizontalBlock"]:has(>[data-testid="stColumn"]:nth-child(4)) > [data-testid="stColumn"] {{ flex:1 1 calc(50% - .6rem) !important; min-width:calc(50% - .6rem) !important; }} }}
+        @media(max-width:560px) {{ .stApp [data-testid="stHorizontalBlock"]:has(>[data-testid="stColumn"]:nth-child(4)) > [data-testid="stColumn"] {{ flex:1 1 100% !important; min-width:100% !important; }} }}
+        @media(max-width:760px) {{ .stApp [data-testid="stMainBlockContainer"] {{ padding:1.35rem 1rem 3rem; }} h1 {{ font-size:1.75rem !important; }} }}
         </style>""",
         unsafe_allow_html=True,
     )
 
 
 def main() -> None:
-    st.set_page_config(page_title="RxAudit", page_icon="💊", layout="centered")
+    st.set_page_config(page_title="Resistal", page_icon="assets/resistal-favicon.svg", layout="wide")
     if "language" not in st.session_state:
         st.session_state.language = "English"
+    if "navigation_page" not in st.session_state:
+        st.session_state.navigation_page = "overview"
 
     with st.sidebar:
+        st.markdown(
+            """<div class="resistal-brand"><svg width="42" height="42" viewBox="0 0 96 96" aria-hidden="true"><path d="M25 74V22h25c18 0 21 26 2 29H25" fill="none" stroke="#163A5F" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/><path d="m46 51 25 23" fill="none" stroke="#2864A5" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/><circle cx="25" cy="22" r="6" fill="#2864A5"/></svg><div><div class="resistal-brand-name">Resistal</div><div class="resistal-brand-tag">CARE · REVIEW · STEWARDSHIP</div></div></div>""",
+            unsafe_allow_html=True,
+        )
         language = st.selectbox(
             TEXT[st.session_state.language]["language"],
             options=("English", "اردو"), key="language",
         )
         labels = TEXT[language]
         st.divider()
-        page_key = st.radio(
-            labels["navigation"], options=PAGES,
-            format_func=lambda key: labels[key], key="navigation_page",
-        )
+        st.markdown(f"**{labels['navigation']}**")
+        for nav_key in PAGES:
+            if st.button(
+                labels[nav_key],
+                key=f"nav_{nav_key}",
+                type="primary" if st.session_state.navigation_page == nav_key else "secondary",
+                icon=NAV_ICONS[nav_key],
+                use_container_width=True,
+            ):
+                st.session_state.navigation_page = nav_key
+                st.rerun()
+        page_key = st.session_state.navigation_page
 
     apply_language_styles(language)
     labels = TEXT[language]
-    st.title(labels["title"])
-    st.subheader(labels["subtitle"])
-    st.write(labels["description"])
-    st.markdown(f"### {labels['about_title']}")
-    st.write(labels["about_body"])
+    st.title(labels[page_key])
 
-    if page_key == "patient_history":
+    if page_key == "overview":
+        render_overview(language)
+    elif page_key == "patient_history":
         render_patient_history(labels, language)
     elif page_key == "prescription_audit":
         render_prescription_audit(language)
@@ -190,13 +249,10 @@ def main() -> None:
         render_patient_guidance(language)
     elif page_key == "analytics":
         render_analytics(language)
-    else:
-        st.markdown(f"### {labels[page_key]}")
-        st.info(labels["placeholder"])
-
     st.divider()
     with st.expander(labels["connection_title"]):
         st.write(labels["connection_description"])
+        st.caption(labels["connection_scope"])
         if st.button(labels["test_button"], type="secondary", key="gemini_connection_test"):
             with st.spinner(labels["testing"]):
                 try:

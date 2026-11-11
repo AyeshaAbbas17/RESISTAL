@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-labelledby="title">
+  <title id="title">Resistal symbol</title>
+  <path d="M25 74V22h25c18 0 21 26 2 29H25" fill="none" stroke="#163A5F" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="m46 51 25 23" fill="none" stroke="#2864A5" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="25" cy="22" r="6" fill="#2864A5"/>
+</svg>

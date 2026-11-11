@@ -134,27 +134,26 @@ def _show_original_answers(labels: dict[str, str], record: dict[str, Any]) -> No
 
 
 def _show_records(labels: dict[str, str]) -> None:
-    for record in get_patient_history_records(st.session_state):
-        st.markdown(f"### {labels['submission']} · {record['record_id']}")
-        st.caption(f"{labels['submitted_at']}: {record['submitted_at']}")
-        if record["summary_status"] == "ready" and record["summary"]:
-            _show_summary(labels, record["summary"])
-        else:
-            st.warning(_error_message(labels, record.get("summary_error")))
-            if st.button(
-                labels["retry_summary"],
-                key=f"retry_history_{record['record_id']}",
-            ):
-                with st.spinner(labels["summary_loading"]):
-                    _request_summary(record)
-                st.rerun()
-        _show_original_answers(labels, record)
-        st.divider()
+    for index, record in enumerate(get_patient_history_records(st.session_state), start=1):
+        with st.container(border=True):
+            st.markdown(f"#### {labels['submission']} {index}")
+            st.caption(f"{labels['submitted_at']}: {record['submitted_at']}")
+            if record["summary_status"] == "ready" and record["summary"]:
+                _show_summary(labels, record["summary"])
+            else:
+                st.warning(_error_message(labels, record.get("summary_error")))
+                if st.button(
+                    labels["retry_summary"],
+                    key=f"retry_history_{record['record_id']}",
+                ):
+                    with st.spinner(labels["summary_loading"]):
+                        _request_summary(record)
+                    st.rerun()
+            _show_original_answers(labels, record)
 
 
 def render_patient_history(labels: dict[str, str], language: str) -> None:
     """Render the history questionnaire using the app's shared language state."""
-    st.markdown(f"### {labels['history_title']}")
     st.write(labels["history_intro"])
     st.info(labels["ai_notice"])
 

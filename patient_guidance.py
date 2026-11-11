@@ -146,21 +146,22 @@ def _show_confirmed_preview(
     labels: dict[str, str], confirmed_details: dict[str, Any]
 ) -> dict[str, str]:
     source = prepare_confirmed_guidance_source(confirmed_details)
-    st.markdown(f"#### {labels['preview']}")
-    for field in PATIENT_GUIDANCE_FIELDS:
-        value = source[field]
-        if value == "NOT_PROVIDED":
-            shown = labels["not_provided"]
-        elif value == "UNCLEAR":
-            shown = labels["unclear"]
-        else:
-            shown = value
-        label_key = (
-            "preview_timing_special_instructions"
-            if field == "timing_special_instructions"
-            else "field_" + field
-        )
-        st.write(f"**{labels[label_key]}:** {shown}")
+    with st.container(border=True):
+        st.markdown(f"#### {labels['preview']}")
+        for field in PATIENT_GUIDANCE_FIELDS:
+            value = source[field]
+            if value == "NOT_PROVIDED":
+                shown = labels["not_provided"]
+            elif value == "UNCLEAR":
+                shown = labels["unclear"]
+            else:
+                shown = value
+            label_key = (
+                "preview_timing_special_instructions"
+                if field == "timing_special_instructions"
+                else "field_" + field
+            )
+            st.write(f"**{labels[label_key]}:** {shown}")
     return source
 
 
@@ -217,7 +218,6 @@ def _show_guidance(
 def render_patient_guidance(interface_language: str) -> None:
     """Render guidance controls for existing, professionally confirmed records only."""
     labels = TEXT[interface_language]
-    st.markdown(f"### {labels['title']}")
     st.write(labels["intro"])
     st.info(labels["safety_notice"])
 

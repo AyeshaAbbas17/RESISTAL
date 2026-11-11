@@ -1,6 +1,6 @@
-# RxAudit
+# Resistal
 
-**AI-Powered Antibiotic Stewardship** — a bilingual Streamlit prototype for organizing information for healthcare professionals to review. RxAudit does not diagnose, prescribe, or make treatment decisions. AI output is for professional review.
+**Antibiotic stewardship, made clearer** — a bilingual Streamlit workspace for organizing patient-reported history, reviewing prescription completeness, and preparing guidance from professionally confirmed details. Resistal does not diagnose, prescribe, or make treatment decisions. AI output is for professional review.
 
 ## Requirements
 
@@ -28,7 +28,7 @@ Run the app:
 streamlit run app.py
 ```
 
-Use the language selector in the sidebar to switch between English and اردو. The Gemini connection button sends only a harmless test prompt and displays Gemini's actual response.
+Use the language selector in the sidebar to switch between English and اردو. The Overview shows session-only aggregate counts and shortcuts into the existing workflows. The Gemini connection button sends only a harmless test prompt and displays Gemini's actual response.
 
 ## Patient Antibiotic History
 
@@ -55,6 +55,8 @@ Analytics summarizes distinct Patient History and Prescription Audit records in 
 ## Project files
 
 - `app.py` — bilingual Streamlit application shell and live connection test UI.
+- `assets/resistal-symbol.svg`, `assets/resistal-logo.svg`, `assets/resistal-logo-dark.svg`, and `assets/resistal-favicon.svg` — custom brand assets.
+- `.streamlit/config.toml` — application theme colors.
 - `gemini_service.py` — API configuration, client initialization, and harmless test request.
 - `audit_rules.py` — completeness-only prescription review checks; no clinical appropriateness rules are active.
 - `analytics.py` — bilingual aggregate metrics and privacy-thresholded monthly trends for session records.
