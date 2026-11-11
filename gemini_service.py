@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 from typing import Any, Mapping
 
 import httpx
@@ -297,3 +298,221 @@ def extract_prescription_details(image_bytes: bytes, mime_type: str) -> dict[str
         raise GeminiServiceError(
             "Gemini returned an unreadable prescription extraction.", code="invalid_response"
         ) from error
+
+
+PATIENT_GUIDANCE_FIELDS = (
+    "medicine_name",
+    "strength_and_dose",
+    "frequency",
+    "duration",
+    "route",
+    "timing_special_instructions",
+)
+
+PATIENT_GUIDANCE_SCHEMA = {
+    "type": "OBJECT",
+    "properties": {field: {"type": "STRING"} for field in PATIENT_GUIDANCE_FIELDS},
+    "required": list(PATIENT_GUIDANCE_FIELDS),
+    "propertyOrdering": list(PATIENT_GUIDANCE_FIELDS),
+}
+
+_GUIDANCE_SOURCE_FIELDS = {
+    "medicine_name": ("antibiotic_name",),
+    "strength_and_dose": ("strength_dosage",),
+    "frequency": ("dose_frequency",),
+    "duration": ("duration",),
+    "route": ("route", "route_of_administration"),
+    "timing_special_instructions": (
+        "timing_instructions",
+        "special_instructions",
+        "other_relevant_details",
+    ),
+}
+
+_GUIDANCE_NOT_PROVIDED = {
+    "", "not specified", "not provided", "not reported", "unknown", "n/a", "none",
+    "نامعلوم", "معلوم نہیں", "درج نہیں", "نہیں بتایا گیا", "موجود نہیں",
+}
+_GUIDANCE_UNCLEAR = {
+    "unclear", "illegible", "unreadable", "not legible", "not readable", "uncertain",
+    "واضح نہیں", "غیر واضح", "پڑھا نہیں جا سکتا", "پڑھنے کے قابل نہیں",
+}
+_GUIDANCE_NUMBER_RE = re.compile(r"\d+(?:[.,]\d+)?")
+_GUIDANCE_DOSE_UNIT_RE = re.compile(
+    r"(?i)\b(?:micrograms?|mcg|μg|µg|milligrams?|mg|kilograms?|kg|grams?|g|"
+    r"millilit(?:er|re)s?|ml|lit(?:er|re)s?|l|units?|iu|meq)\b"
+    r"|(?:ملی\s*گرام|مائیکروگرام|گرام|ملی\s*لیٹر|لیٹر|یونٹ)"
+)
+
+
+def _canonical_guidance_unit(unit: str) -> str:
+    normalized = re.sub(r"\s+", "", unit.casefold())
+    if normalized in {"microgram", "micrograms", "mcg", "μg", "µg", "مائیکروگرام"}:
+        return "mcg"
+    if normalized in {"milligram", "milligrams", "mg", "ملیگرام"}:
+        return "mg"
+    if normalized in {"kilogram", "kilograms", "kg"}:
+        return "kg"
+    if normalized in {"gram", "grams", "g", "گرام"}:
+        return "g"
+    if normalized in {"milliliter", "milliliters", "millilitre", "millilitres", "ml", "ملیلیٹر"}:
+        return "ml"
+    if normalized in {"liter", "liters", "litre", "litres", "l", "لیٹر"}:
+        return "l"
+    if normalized in {"unit", "units", "یونٹ"}:
+        return "unit"
+    return normalized
+
+
+def prepare_confirmed_guidance_source(
+    confirmed_details: Mapping[str, Any],
+) -> dict[str, str]:
+    """Select only relevant fields from staff-confirmed prescription details."""
+    source: dict[str, str] = {}
+    for guidance_field, candidates in _GUIDANCE_SOURCE_FIELDS.items():
+        value: Any = "Not provided"
+        for candidate in candidates:
+            if candidate in confirmed_details:
+                value = confirmed_details[candidate]
+                break
+        text = "" if value is None else str(value).strip()
+        normalized = text.casefold()
+        if normalized in _GUIDANCE_UNCLEAR:
+            source[guidance_field] = "UNCLEAR"
+        elif normalized in _GUIDANCE_NOT_PROVIDED:
+            source[guidance_field] = "NOT_PROVIDED"
+        else:
+            source[guidance_field] = text
+    return source
+
+
+def _patient_guidance_prompt(source: Mapping[str, str], language: str) -> str:
+    language_name = "Urdu written in Urdu script" if language == "اردو" else "English"
+    confirmed_json = json.dumps(dict(source), ensure_ascii=False, indent=2)
+    return f"""Rewrite only the confirmed prescription details below as brief, clear patient-facing wording in {language_name}.
+
+Safety requirements:
+- The source data is authoritative. Do not add or infer information.
+- Do not recommend starting, stopping, delaying, changing, or selecting medicine or treatment.
+- Do not calculate, alter, or complete a dose, strength, frequency, route, or duration.
+- Do not add food advice, side effects, contraindications, missed-dose advice, interactions, diagnoses, or other medical guidance.
+- Preserve the medicine name exactly. Preserve all numbers and units in each corresponding field.
+- For every provided non-name field, include the original confirmed value verbatim, followed by a short plain-language explanation in the target language if needed. Do not omit or replace the original wording.
+- Do not turn a description into a new instruction. For timing_special_instructions, restate the source only if it is clearly a timing or special instruction; otherwise use the missing marker.
+- For any field whose value is NOT_PROVIDED or UNCLEAR, return that exact marker unchanged. Do not generate guidance for that field.
+- Return only a JSON object matching the schema, with exactly the specified fields and no additional text.
+
+CONFIRMED DETAILS (only information approved by the healthcare professional):
+{confirmed_json}
+"""
+
+
+def _parse_patient_guidance(
+    response_text: str | None,
+    source: Mapping[str, str],
+    allow_omitted_special_note: bool = False,
+) -> dict[str, str]:
+    if not response_text or not response_text.strip():
+        raise GeminiServiceError(
+            "Gemini returned empty patient guidance.", code="invalid_response"
+        )
+    try:
+        payload = json.loads(response_text.strip())
+    except (json.JSONDecodeError, TypeError) as error:
+        raise GeminiServiceError(
+            "Gemini returned unreadable patient guidance.", code="invalid_response"
+        ) from error
+    if not isinstance(payload, dict) or set(payload) != set(PATIENT_GUIDANCE_FIELDS):
+        raise GeminiServiceError(
+            "Gemini returned incomplete patient guidance.", code="invalid_response"
+        )
+
+    guidance: dict[str, str] = {}
+    for field in PATIENT_GUIDANCE_FIELDS:
+        value = payload[field]
+        if not isinstance(value, str) or not value.strip():
+            raise GeminiServiceError(
+                "Gemini returned invalid patient guidance.", code="invalid_response"
+            )
+        value = value.strip()
+        source_value = source[field]
+        if source_value in ("NOT_PROVIDED", "UNCLEAR"):
+            if value != source_value:
+                raise GeminiServiceError(
+                    "Gemini filled in a missing or unclear detail.", code="invalid_response"
+                )
+        elif (
+            field == "timing_special_instructions"
+            and allow_omitted_special_note
+            and value in ("NOT_PROVIDED", "UNCLEAR")
+        ):
+            # Existing Task 3 records use a general "other details" field. If
+            # staff did not confirm a dedicated instruction field, Gemini may
+            # conservatively omit notes that are not clearly timing/instructions.
+            pass
+        elif field == "medicine_name" and value != source_value:
+            raise GeminiServiceError(
+                "Gemini changed the confirmed medicine name.", code="invalid_response"
+            )
+        elif source_value.casefold() not in value.casefold():
+            raise GeminiServiceError(
+                "Gemini omitted or changed a confirmed instruction.", code="invalid_response"
+            )
+        elif _GUIDANCE_NUMBER_RE.findall(value) != _GUIDANCE_NUMBER_RE.findall(source_value):
+            raise GeminiServiceError(
+                "Gemini changed a confirmed numeric detail.", code="invalid_response"
+            )
+        elif {
+            _canonical_guidance_unit(unit)
+            for unit in _GUIDANCE_DOSE_UNIT_RE.findall(value)
+        } != {
+            _canonical_guidance_unit(unit)
+            for unit in _GUIDANCE_DOSE_UNIT_RE.findall(source_value)
+        }:
+            raise GeminiServiceError(
+                "Gemini changed a confirmed dosage unit.", code="invalid_response"
+            )
+        guidance[field] = value
+    return guidance
+
+
+def generate_patient_guidance(
+    confirmed_details: Mapping[str, Any], language: str
+) -> dict[str, str]:
+    """Transform only staff-confirmed prescription fields into patient-friendly wording."""
+    if not isinstance(confirmed_details, Mapping):
+        raise GeminiServiceError("Confirmed prescription details are missing.", code="invalid_input")
+    if language not in ("English", "اردو"):
+        raise GeminiServiceError("Choose English or Urdu for patient guidance.", code="invalid_input")
+
+    source = prepare_confirmed_guidance_source(confirmed_details)
+    has_explicit_instruction_field = any(
+        field in confirmed_details
+        for field in ("timing_instructions", "special_instructions")
+    )
+    _, model = get_gemini_settings()
+    client = get_gemini_client()
+    try:
+        response = client.models.generate_content(
+            model=model,
+            contents=_patient_guidance_prompt(source, language),
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=PATIENT_GUIDANCE_SCHEMA,
+            ),
+        )
+    except GeminiServiceError:
+        raise
+    except Exception as error:
+        raise _request_error(error) from error
+    try:
+        response_text = response.text
+    except Exception as error:
+        raise GeminiServiceError(
+            "Gemini returned unreadable patient guidance.", code="invalid_response"
+        ) from error
+    return _parse_patient_guidance(
+        response_text,
+        source,
+        allow_omitted_special_note=not has_explicit_instruction_field,
+    )

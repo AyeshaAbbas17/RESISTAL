@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 
 from gemini_service import GeminiServiceError, test_gemini_connection
 from patient_history import render_patient_history
+from patient_guidance import render_patient_guidance
 from prescription_audit import render_prescription_audit
 
 load_dotenv()
@@ -184,6 +185,8 @@ def main() -> None:
         render_patient_history(labels, language)
     elif page_key == "prescription_audit":
         render_prescription_audit(language)
+    elif page_key == "patient_guidance":
+        render_patient_guidance(language)
     else:
         st.markdown(f"### {labels[page_key]}")
         st.info(labels["placeholder"])

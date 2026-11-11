@@ -42,6 +42,12 @@ Healthcare staff can upload a PNG or JPEG prescription image. The image is valid
 
 The audit checks only whether antibiotic name, strength/dosage, dose frequency, and treatment duration are missing or unclear. It does not apply clinical guidelines, judge treatment appropriateness, or recommend care. Results support professional review and do not replace clinical judgment.
 
+## Patient Guidance
+
+Patient Guidance is available for prescription records only after a healthcare professional confirms the extracted details in Prescription Audit. It uses only the confirmed medicine name, strength/dose, frequency, duration, route, and confirmed timing or special-instruction fields. The selected English or Urdu output is saved on that existing prescription record; retrying or generating the other language does not create another record.
+
+Gemini is instructed to restate confirmed details without changing numbers or units or adding medical advice. The application validates the structured response, preserves missing/unclear markers locally, and supplies the general reminders separately. If generation fails or the output cannot be validated, no guidance fallback is shown. These session records are temporary and cleared when the session ends.
+
 ## Project files
 
 - `app.py` — bilingual Streamlit application shell and live connection test UI.
@@ -50,6 +56,7 @@ The audit checks only whether antibiotic name, strength/dosage, dose frequency, 
 - `analytics.py` — placeholder for future analytics.
 - `data_store.py` — session-state helpers for patient-history and prescription-audit records.
 - `prescription_audit.py` — bilingual prescription image upload, extraction, confirmation, and completeness-review interface.
+- `patient_guidance.py` — bilingual guidance generated only from confirmed prescription details.
 - `requirements.txt` — Python dependencies.
 - `.env.example` — environment variable template.
 - `.gitignore` — excludes local secrets and generated files.
