@@ -11,6 +11,7 @@ from data_store import (
     get_patient_history_records,
     update_patient_history_record,
 )
+from auth_service import get_current_user
 from gemini_service import GeminiServiceError, generate_patient_history_summary
 
 
@@ -133,8 +134,8 @@ def _show_original_answers(labels: dict[str, str], record: dict[str, Any]) -> No
             st.write(value if value else labels["not_reported"])
 
 
-def _show_records(labels: dict[str, str]) -> None:
-    for index, record in enumerate(get_patient_history_records(st.session_state), start=1):
+def _show_records(labels: dict[str, str], records: list[dict[str, Any]]) -> None:
+    for index, record in enumerate(records, start=1):
         with st.container(border=True):
             st.markdown(f"#### {labels['submission']} {index}")
             st.caption(f"{labels['submitted_at']}: {record['submitted_at']}")
@@ -152,8 +153,23 @@ def _show_records(labels: dict[str, str]) -> None:
             _show_original_answers(labels, record)
 
 
-def render_patient_history(labels: dict[str, str], language: str) -> None:
+def render_patient_history(labels: dict[str, str], language: str, user: dict[str, str] | None = None) -> None:
     """Render the history questionnaire using the app's shared language state."""
+    user = user or get_current_user(st.session_state)
+    if not user:
+        st.error("Please sign in to access patient history." if language == "English" else "مریض کی معلومات دیکھنے کے لیے لاگ اِن کریں۔")
+        return
+    if user["role"] == "doctor":
+        records = get_patient_history_records(st.session_state)
+        st.write("Review patient-reported, unverified histories." if language == "English" else "مریض کی بتائی ہوئی غیر تصدیق شدہ سابقہ معلومات کا جائزہ لیں۔")
+        if not records:
+            st.info("No patient histories have been submitted in this session." if language == "English" else "اس سیشن میں مریض کی سابقہ معلومات جمع نہیں ہوئیں۔")
+        else:
+            _show_records(labels, records)
+        return
+    if user["role"] != "patient":
+        st.error("This section is not available for your account role." if language == "English" else "یہ حصہ آپ کے اکاؤنٹ کے کردار کے لیے دستیاب نہیں۔")
+        return
     st.write(labels["history_intro"])
     st.info(labels["ai_notice"])
 
@@ -285,6 +301,7 @@ def render_patient_history(labels: dict[str, str], language: str) -> None:
             )
             record = {
                 "record_id": uuid4().hex[:12],
+                "owner_user_id": user["user_id"],
                 "submitted_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                 "ui_language": language,
                 "responses": responses,
@@ -298,4 +315,6 @@ def render_patient_history(labels: dict[str, str], language: str) -> None:
                 _request_summary(record)
             st.rerun()
 
-    _show_records(labels)
+    owned_records = [record for record in get_patient_history_records(st.session_state)
+                     if record.get("owner_user_id") == user["user_id"]]
+    _show_records(labels, owned_records)

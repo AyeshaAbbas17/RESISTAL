@@ -7,6 +7,7 @@ from typing import Any
 import streamlit as st
 
 from data_store import get_prescription_audit_records, update_prescription_audit_record
+from auth_service import get_current_user
 from gemini_service import (
     GeminiServiceError,
     PATIENT_GUIDANCE_FIELDS,
@@ -38,6 +39,9 @@ TEXT = {
         "confirm_missing": "This detail was not provided. Please confirm it with your healthcare professional before relying on it.",
         "confirm_unclear": "This detail is unclear. Please confirm it with your healthcare professional before relying on it.",
         "failed": "Patient guidance could not be generated. Your confirmed prescription remains saved; please retry.",
+        "role_denied": "Sign in to view guidance. Only doctors can generate or change it.",
+        "no_patient_guidance": "No guidance has been prepared for your linked prescriptions yet. Please contact your healthcare professional.",
+        "read_only": "This guidance was prepared from details confirmed by a healthcare professional.",
         "timeout": "Gemini timed out. Your confirmed prescription remains saved; please retry.",
         "unavailable": "Gemini is temporarily unavailable. Your confirmed prescription remains saved; please retry shortly.",
         "connection_failed": "Could not connect to Gemini. Your confirmed prescription remains saved; please retry.",
@@ -75,6 +79,9 @@ TEXT = {
         "confirm_missing": "یہ معلومات فراہم نہیں کی گئی۔ اس پر عمل کرنے سے پہلے اپنے صحت کے ماہر سے تصدیق کریں۔",
         "confirm_unclear": "یہ معلومات واضح نہیں۔ اس پر عمل کرنے سے پہلے اپنے صحت کے ماہر سے تصدیق کریں۔",
         "failed": "مریض کے لیے رہنمائی تیار نہیں ہو سکی۔ تصدیق شدہ نسخہ محفوظ ہے؛ دوبارہ کوشش کریں۔",
+        "role_denied": "رہنمائی دیکھنے کے لیے لاگ اِن کریں۔ صرف ڈاکٹر اسے تیار یا تبدیل کر سکتے ہیں۔",
+        "no_patient_guidance": "آپ کے منسلک نسخوں کے لیے ابھی رہنمائی تیار نہیں ہوئی۔ اپنے صحت کے ماہر سے رابطہ کریں۔",
+        "read_only": "یہ رہنمائی صحت کے ماہر کی تصدیق شدہ معلومات سے تیار کی گئی ہے۔",
         "timeout": "Gemini نے مقررہ وقت میں جواب نہیں دیا۔ تصدیق شدہ نسخہ محفوظ ہے؛ دوبارہ کوشش کریں۔",
         "unavailable": "Gemini عارضی طور پر دستیاب نہیں۔ تصدیق شدہ نسخہ محفوظ ہے؛ کچھ دیر بعد دوبارہ کوشش کریں۔",
         "connection_failed": "Gemini سے رابطہ نہیں ہو سکا۔ تصدیق شدہ نسخہ محفوظ ہے؛ دوبارہ کوشش کریں۔",
@@ -218,6 +225,10 @@ def _show_guidance(
 def render_patient_guidance(interface_language: str) -> None:
     """Render guidance controls for existing, professionally confirmed records only."""
     labels = TEXT[interface_language]
+    user = get_current_user(st.session_state)
+    if not user:
+        st.error(labels["role_denied"])
+        return
     st.write(labels["intro"])
     st.info(labels["safety_notice"])
 
@@ -226,6 +237,39 @@ def render_patient_guidance(interface_language: str) -> None:
         for record in get_prescription_audit_records(st.session_state)
         if isinstance(record.get("doctor_confirmed_details"), dict)
     ]
+    if user["role"] == "patient":
+        records = [record for record in records
+                   if record.get("owner_user_id") == user["user_id"]
+                   and any((item or {}).get("status") == "ready"
+                           for item in (record.get("patient_guidance") or {}).values())]
+        if not records:
+            st.info(labels["no_patient_guidance"])
+            return
+        st.caption(labels["read_only"])
+        record_ids = [item["record_id"] for item in records]
+        selected_id = st.selectbox(
+            labels["select_record"], options=record_ids,
+            format_func=lambda record_id: _record_label(
+                next(item for item in records if item["record_id"] == record_id), labels
+            ), key="patient_guidance_owned_record_id",
+        )
+        record = next(item for item in records if item["record_id"] == selected_id)
+        by_language = record.get("patient_guidance") or {}
+        selected_language = st.selectbox(
+            labels["language"], options=("English", "اردو"),
+            index=0 if interface_language == "English" else 1,
+            key="patient_guidance_patient_language",
+        )
+        current = by_language.get(selected_language, {})
+        if current.get("status") != "ready":
+            st.info(labels["no_patient_guidance"])
+            return
+        source = _show_confirmed_preview(labels, record["doctor_confirmed_details"])
+        _show_guidance(TEXT[selected_language], source, current["content"], selected_language)
+        return
+    if user["role"] != "doctor":
+        st.error(labels["role_denied"])
+        return
     if not records:
         st.warning(labels["no_records"])
         return

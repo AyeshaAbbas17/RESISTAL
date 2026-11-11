@@ -52,9 +52,15 @@ Gemini is instructed to restate confirmed details without changing numbers or un
 
 Analytics summarizes distinct Patient History and Prescription Audit records in the current Streamlit session. It keeps patient-reported, unverified use separate from completeness flags on prescriptions with healthcare-professional-confirmed details. Monthly charts are shown only when each of at least two months has at least five dated records; otherwise the page explains that there is not enough data for a trend chart. The dashboard reports use patterns and information completeness only; it does not measure antimicrobial resistance or assess clinical appropriateness. No names, record IDs, or individual responses are displayed.
 
+## Demonstration Accounts and Role Access
+
+Create a Doctor or Patient account from the app's registration screen, then sign in with the selected role. Patient History submissions and prescription guidance are associated with the signed-in patient account; doctor pages are restricted to doctor-role sessions. Doctor accounts are demonstration role labels and do not verify professional credentials. Accounts and records are held only in the current Streamlit session, are not shared between sessions, and are not production-secure. Passwords are stored as salted PBKDF2 hashes in session state, not as plaintext. Password recovery is a placeholder.
+
 ## Project files
 
 - `app.py` — bilingual Streamlit application shell and live connection test UI.
+- `auth_service.py` — session-scoped demonstration account registration, authentication, role checks, and logout.
+- `auth_ui.py` — bilingual login and registration screens.
 - `assets/resistal-symbol.svg`, `assets/resistal-logo.svg`, `assets/resistal-logo-dark.svg`, and `assets/resistal-favicon.svg` — custom brand assets.
 - `.streamlit/config.toml` — application theme colors.
 - `gemini_service.py` — API configuration, client initialization, and harmless test request.

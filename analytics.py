@@ -9,6 +9,7 @@ import pandas as pd
 import streamlit as st
 
 from data_store import get_patient_history_records, get_prescription_audit_records
+from auth_service import get_current_user
 
 
 MIN_RECORDS_PER_MONTH = 5
@@ -337,6 +338,10 @@ def _render_audit_chart(
 
 def render_analytics(language: str) -> None:
     """Render session-only aggregate metrics and privacy-thresholded monthly charts."""
+    user = get_current_user(st.session_state)
+    if not user or user.get("role") != "doctor":
+        st.error("Institutional Analytics is available to doctor accounts only." if language == "English" else "ادارہ جاتی اعداد و شمار صرف ڈاکٹر کے اکاؤنٹ کے لیے دستیاب ہیں۔")
+        return
     labels = TEXT[language]
     patient_records = unique_records(get_patient_history_records(st.session_state))
     prescription_records = unique_records(
@@ -392,6 +397,10 @@ def render_analytics(language: str) -> None:
 
 def render_overview(language: str) -> None:
     """Render a concise session-level overview without exposing individual records."""
+    user = get_current_user(st.session_state)
+    if not user or user.get("role") != "doctor":
+        st.error("Please sign in with a doctor account." if language == "English" else "ڈاکٹر کے اکاؤنٹ سے لاگ اِن کریں۔")
+        return
     labels = OVERVIEW_TEXT[language]
     patient_records = unique_records(get_patient_history_records(st.session_state))
     prescription_records = unique_records(

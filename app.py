@@ -4,6 +4,8 @@ import streamlit as st
 from dotenv import load_dotenv
 
 from analytics import render_analytics, render_overview
+from auth_service import get_current_user, logout
+from auth_ui import render_auth_page
 from gemini_service import GeminiServiceError, test_gemini_connection
 from patient_history import render_patient_history
 from patient_guidance import render_patient_guidance
@@ -209,7 +211,20 @@ def main() -> None:
     if "language" not in st.session_state:
         st.session_state.language = "English"
     if "navigation_page" not in st.session_state:
-        st.session_state.navigation_page = "overview"
+        st.session_state.navigation_page = "login"
+
+    user = get_current_user(st.session_state)
+    if user is None:
+        st.session_state.navigation_page = "login"
+    allowed_pages = (
+        ("overview", "patient_history", "prescription_audit", "patient_guidance", "analytics")
+        if user and user["role"] == "doctor"
+        else ("overview", "patient_history", "patient_guidance")
+        if user and user["role"] == "patient"
+        else ("login",)
+    )
+    if st.session_state.navigation_page not in allowed_pages:
+        st.session_state.navigation_page = allowed_pages[0]
 
     with st.sidebar:
         st.markdown(
@@ -222,10 +237,22 @@ def main() -> None:
         )
         labels = TEXT[language]
         st.divider()
+        if user:
+            role_caption = ("Doctor" if user["role"] == "doctor" else "Patient") if language == "English" else ("ڈاکٹر" if user["role"] == "doctor" else "مریض")
+            st.caption(f"{user['full_name']} · {role_caption}")
+            if st.button("Log out" if language == "English" else "لاگ آؤٹ", key="auth_logout"):
+                logout(st.session_state)
+                st.rerun()
         st.markdown(f"**{labels['navigation']}**")
-        for nav_key in PAGES:
+        nav_pages = allowed_pages if user else ()
+        for nav_key in nav_pages:
+            nav_label = labels[nav_key]
+            if user and user["role"] == "patient" and nav_key == "patient_history":
+                nav_label = "My Antibiotic History" if language == "English" else "اینٹی بایوٹک کی میری سابقہ معلومات"
+            elif user and user["role"] == "patient" and nav_key == "patient_guidance":
+                nav_label = "My Prescription Guidance" if language == "English" else "نسخے سے متعلق میری رہنمائی"
             if st.button(
-                labels[nav_key],
+                nav_label,
                 key=f"nav_{nav_key}",
                 type="primary" if st.session_state.navigation_page == nav_key else "secondary",
                 icon=NAV_ICONS[nav_key],
@@ -237,39 +264,54 @@ def main() -> None:
 
     apply_language_styles(language)
     labels = TEXT[language]
-    st.title(labels[page_key])
+    if page_key == "login":
+        st.title("Welcome to Resistal" if language == "English" else "Resistal میں خوش آمدید")
+        render_auth_page(language)
+        return
+    page_titles = {
+        "overview": ("Doctor Dashboard" if language == "English" else "ڈاکٹر کا ڈیش بورڈ") if user["role"] == "doctor" else ("Patient Dashboard" if language == "English" else "مریض کا ڈیش بورڈ"),
+        "patient_history": ("My Antibiotic History" if language == "English" else "اینٹی بایوٹک کی میری سابقہ معلومات") if user["role"] == "patient" else labels["patient_history"],
+        "prescription_audit": labels["prescription_audit"],
+        "patient_guidance": ("My Prescription Guidance" if language == "English" else "نسخے سے متعلق میری رہنمائی") if user["role"] == "patient" else labels["patient_guidance"],
+        "analytics": labels["analytics"],
+    }
+    st.title(page_titles[page_key])
 
     if page_key == "overview":
-        render_overview(language)
+        if user["role"] == "doctor":
+            render_overview(language)
+        else:
+            st.write("Use the patient sections to submit your antibiotic history and read guidance linked to your prescription." if language == "English" else "مریض کے صفحات میں اپنی اینٹی بایوٹک کی معلومات جمع کریں اور اپنے نسخے سے منسلک رہنمائی دیکھیں۔")
     elif page_key == "patient_history":
-        render_patient_history(labels, language)
+        render_patient_history(labels, language, user=user)
     elif page_key == "prescription_audit":
         render_prescription_audit(language)
     elif page_key == "patient_guidance":
         render_patient_guidance(language)
     elif page_key == "analytics":
         render_analytics(language)
-    st.divider()
-    with st.expander(labels["connection_title"]):
-        st.write(labels["connection_description"])
-        st.caption(labels["connection_scope"])
-        if st.button(labels["test_button"], type="secondary", key="gemini_connection_test"):
-            with st.spinner(labels["testing"]):
-                try:
-                    response = test_gemini_connection()
-                    st.success(labels["success"])
-                    st.write(response)
-                except GeminiServiceError as error:
-                    if error.code == "missing_key":
-                        st.error(labels["missing_key"])
-                    elif error.code == "timeout":
-                        st.error(labels["connection_timeout"])
-                    elif error.code == "unavailable":
-                        st.error(labels["connection_unavailable"])
-                    elif error.code == "connection_failed":
-                        st.error(labels["connection_failed"])
-                    else:
-                        st.error(labels["connection_error"])
+    if user["role"] == "doctor":
+        st.divider()
+        with st.expander(labels["connection_title"]):
+            st.write(labels["connection_description"])
+            st.caption(labels["connection_scope"])
+            if st.button(labels["test_button"], type="secondary", key="gemini_connection_test"):
+                with st.spinner(labels["testing"]):
+                    try:
+                        response = test_gemini_connection()
+                        st.success(labels["success"])
+                        st.write(response)
+                    except GeminiServiceError as error:
+                        if error.code == "missing_key":
+                            st.error(labels["missing_key"])
+                        elif error.code == "timeout":
+                            st.error(labels["connection_timeout"])
+                        elif error.code == "unavailable":
+                            st.error(labels["connection_unavailable"])
+                        elif error.code == "connection_failed":
+                            st.error(labels["connection_failed"])
+                        else:
+                            st.error(labels["connection_error"])
 
 
 if __name__ == "__main__":

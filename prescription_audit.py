@@ -9,6 +9,7 @@ import streamlit as st
 from PIL import Image, UnidentifiedImageError
 
 from audit_rules import audit_confirmed_details
+from auth_service import get_current_user, list_users_by_role
 from data_store import (
     add_prescription_audit_record,
     get_prescription_audit_records,
@@ -60,6 +61,9 @@ TEXT = {
         "missing_reason": "{field} was not provided in the confirmed details.",
         "unclear_reason": "{field} remains unclear and needs professional review.",
         "no_flag_reason": "No missing or unclear required details were identified by the completeness check.",
+        "assign_patient": "Associate with a patient account (optional)",
+        "unassigned": "Unassigned",
+        "role_denied": "Prescription Audit is available to doctor accounts only.",
     },
     "اردو": {
         "title": "نسخے کا جائزہ",
@@ -103,6 +107,9 @@ TEXT = {
         "missing_reason": "تصدیق شدہ معلومات میں {field} درج نہیں تھا۔",
         "unclear_reason": "{field} اب بھی واضح نہیں اور صحت کے ماہر کا جائزہ درکار ہے۔",
         "no_flag_reason": "مکمل ہونے کی جانچ میں کوئی ضروری معلومات غائب یا غیر واضح نہیں پائی گئیں۔",
+        "assign_patient": "مریض کے اکاؤنٹ سے منسلک کریں (اختیاری)",
+        "unassigned": "غیر منسلک",
+        "role_denied": "نسخے کا جائزہ صرف ڈاکٹر کے اکاؤنٹ کے لیے دستیاب ہے۔",
     },
 }
 
@@ -194,6 +201,10 @@ def _show_audit(labels: dict[str, str], findings: list[dict[str, str]]) -> None:
 def render_prescription_audit(language: str) -> None:
     """Render image upload, AI extraction, staff confirmation, then completeness audit."""
     labels = TEXT[language]
+    user = get_current_user(st.session_state)
+    if not user or user.get("role") != "doctor":
+        st.error(labels["role_denied"])
+        return
     st.write(labels["intro"])
     st.info(labels["disclaimer"])
     uploaded = st.file_uploader(
@@ -214,12 +225,24 @@ def render_prescription_audit(language: str) -> None:
             st.markdown(f"#### {labels['uploaded']}")
             st.image(image_bytes, caption=uploaded.name, use_container_width=True)
 
+    patients = list_users_by_role(st.session_state, "patient")
+    patient_ids = [patient["user_id"] for patient in patients]
+    selected_patient_id = st.selectbox(
+        labels["assign_patient"], options=[""] + patient_ids,
+        format_func=lambda item: labels["unassigned"] if not item else next(
+            f"{patient['full_name']} ({patient['username']})" for patient in patients
+            if patient["user_id"] == item
+        ), key="prescription_assigned_patient",
+    )
+
     if st.button(labels["extract"], type="primary", key="extract_prescription"):
         if valid_upload is None or uploaded is None:
             st.error(labels["unsupported"])
         else:
             record = {
                 "record_id": uuid4().hex[:12],
+                "owner_user_id": selected_patient_id or None,
+                "created_by_user_id": user["user_id"],
                 "submitted_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                 "uploaded_prescription": {
                     "filename": uploaded.name,
