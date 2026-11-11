@@ -48,12 +48,16 @@ Patient Guidance is available for prescription records only after a healthcare p
 
 Gemini is instructed to restate confirmed details without changing numbers or units or adding medical advice. The application validates the structured response, preserves missing/unclear markers locally, and supplies the general reminders separately. If generation fails or the output cannot be validated, no guidance fallback is shown. These session records are temporary and cleared when the session ends.
 
+## Institutional Analytics
+
+Analytics summarizes distinct Patient History and Prescription Audit records in the current Streamlit session. It keeps patient-reported, unverified use separate from completeness flags on prescriptions with healthcare-professional-confirmed details. Monthly charts are shown only when each of at least two months has at least five dated records; otherwise the page explains that there is not enough data for a trend chart. The dashboard reports use patterns and information completeness only; it does not measure antimicrobial resistance or assess clinical appropriateness. No names, record IDs, or individual responses are displayed.
+
 ## Project files
 
 - `app.py` — bilingual Streamlit application shell and live connection test UI.
 - `gemini_service.py` — API configuration, client initialization, and harmless test request.
 - `audit_rules.py` — completeness-only prescription review checks; no clinical appropriateness rules are active.
-- `analytics.py` — placeholder for future analytics.
+- `analytics.py` — bilingual aggregate metrics and privacy-thresholded monthly trends for session records.
 - `data_store.py` — session-state helpers for patient-history and prescription-audit records.
 - `prescription_audit.py` — bilingual prescription image upload, extraction, confirmation, and completeness-review interface.
 - `patient_guidance.py` — bilingual guidance generated only from confirmed prescription details.

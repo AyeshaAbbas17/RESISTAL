@@ -3,6 +3,7 @@
 import streamlit as st
 from dotenv import load_dotenv
 
+from analytics import render_analytics
 from gemini_service import GeminiServiceError, test_gemini_connection
 from patient_history import render_patient_history
 from patient_guidance import render_patient_guidance
@@ -187,6 +188,8 @@ def main() -> None:
         render_prescription_audit(language)
     elif page_key == "patient_guidance":
         render_patient_guidance(language)
+    elif page_key == "analytics":
+        render_analytics(language)
     else:
         st.markdown(f"### {labels[page_key]}")
         st.info(labels["placeholder"])
